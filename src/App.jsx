@@ -1,49 +1,87 @@
+import { useEffect, useState } from "react";
+import { supabase } from "./supabase";
 import Navbar from "./Components/Navbar";
 import Hero from "./Components/Hero";
 import MatchCard from "./Components/MatchCard";
 import Footer from "./Components/Footer";
 import "./App.css";
 
-const matches = [
-  {
-    id: 1,
-    team1: "RCB",
-    team2: "CSK",
-    date: "April 12, 2026",
-    time: "7:30 PM IST",
-    venue: "M. Chinnaswamy Stadium, Bengaluru",
-    price: 1500,
-  },
-  {
-    id: 2,
-    team1: "MI",
-    team2: "KKR",
-    date: "April 14, 2026",
-    time: "7:30 PM IST",
-    venue: "Wankhede Stadium, Mumbai",
-    price: 1800,
-  },
-  {
-    id: 3,
-    team1: "SRH",
-    team2: "GT",
-    date: "April 16, 2026",
-    time: "3:30 PM IST",
-    venue: "Rajiv Gandhi Intl. Stadium, Hyderabad",
-    price: 1200,
-  },
-  {
-    id: 4,
-    team1: "RR",
-    team2: "DC",
-    date: "April 18, 2026",
-    time: "7:30 PM IST",
-    venue: "Sawai Mansingh Stadium, Jaipur",
-    price: 1400,
-  },
-];
-
 function App() {
+  const [matches, setMatches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const fetchMatches = async () => {
+    const { data, error } = await supabase
+      .from("matches")
+      .select("*")
+      .order("id", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching matches:", error);
+      setErrorMsg(error.message);
+    } else {
+      setErrorMsg("");
+      setMatches(data || []);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchMatches();
+
+    const channel = supabase
+      .channel("matches-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "matches" },
+        (payload) => {
+          if (payload.eventType === "UPDATE") {
+            setMatches((prev) =>
+              prev.map((m) => (m.id === payload.new.id ? payload.new : m))
+            );
+          } else {
+            fetchMatches();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const handleBookTicket = async (match) => {
+    if (match.available_seats <= 0) return;
+
+    const { error: bookingError } = await supabase
+      .from("bookings")
+      .insert([
+        {
+          match_id: match.id,
+          user_name: "Ranjan",
+          match_title: `${match.team1} vs ${match.team2}`,
+          tickets: 1,
+          total_price: match.price,
+        },
+      ]);
+
+    if (bookingError) {
+      alert("Booking error: " + bookingError.message);
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("matches")
+      .update({ available_seats: match.available_seats - 1 })
+      .eq("id", match.id);
+
+    if (updateError) {
+      alert("Seat update error: " + updateError.message);
+    }
+  };
+
   return (
     <div className="app">
       <Navbar />
@@ -51,6 +89,13 @@ function App() {
 
       <main id="matches" className="matches-section">
         <h2>Upcoming Matches</h2>
+
+        {loading && <p>Loading matches from database...</p>}
+        {errorMsg && <p style={{ color: "red", marginTop: "1rem" }}>Database Error: {errorMsg}</p>}
+        {!loading && !errorMsg && matches.length === 0 && (
+          <p style={{ marginTop: "1rem" }}>No matches found in the database table.</p>
+        )}
+
         <div className="matches-grid">
           {matches.map((match) => (
             <MatchCard
@@ -58,9 +103,10 @@ function App() {
               team1={match.team1}
               team2={match.team2}
               date={match.date}
-              time={match.time}
               venue={match.venue}
               price={match.price}
+              availableSeats={match.available_seats}
+              onBook={() => handleBookTicket(match)}
             />
           ))}
         </div>

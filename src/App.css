@@ -89,6 +89,12 @@ body {
   margin-top: 0.4rem;
 }
 
+.match-seats {
+  margin-top: 0.6rem;
+  font-size: 0.9rem;
+  color: #16a34a;
+}
+
 .match-footer {
   display: flex;
   justify-content: space-between;
@@ -111,8 +117,9 @@ body {
   cursor: pointer;
 }
 
-.book-btn.booked {
-  background-color: #16a34a;
+.book-btn.sold-out {
+  background-color: #9ca3af;
+  cursor: not-allowed;
 }
 
 .footer {
